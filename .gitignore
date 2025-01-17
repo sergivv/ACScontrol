@@ -1,3 +1,4 @@
 **/.pio/
 **/.vscode/
 **/libdeps/
+**/include/config.h
