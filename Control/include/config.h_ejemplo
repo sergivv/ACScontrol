@@ -1,0 +1,18 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// Datos de la red Wi-Fi
+const char *ssid = "SSID";         // Tu SSID (nombre de la red Wi-Fi)
+const char *password = "PASSWORD"; // Tu contraseña de Wi-Fi
+
+// Datos para IP estática
+IPAddress local_IP(000, 000, 000, 000); // Dirección IP estática
+IPAddress gateway(000, 000, 000, 000);  // Dirección IP de la puerta de enlace (normalmente tu router)
+IPAddress subnet(000, 000, 000, 000);   // Máscara de subred (generalmente 255.255.255.0)
+
+// Configuración del servidor MQTT
+const char *servidor_mqtt = "xxx.xxx.xxx.xxx"; // Dirección del servidor MQTT
+const int puerto_mqtt = 1983;                  // Puerto del servidor
+String mqtt_topic;
+
+#endif
