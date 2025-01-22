@@ -54,6 +54,7 @@ def insertar_datos(data_json):
         datos = json.loads(data_json)
         mac = datos.get("mac")
         temperatura = datos.get("temperatura")
+        humedad = datos.get("humedad", None)
         if not mac or temperatura is None:
             raise ValueError(
                 "El JSON no contiene los campos 'mac' o 'temperatura'")
@@ -65,12 +66,12 @@ def insertar_datos(data_json):
 
         # Insertar en la base de datos
         cursor.execute('''
-        INSERT INTO temperaturas (mac, timestamp, temperatura)
-        VALUES (?, ?, ?)
-        ''', (mac, timestamp, temperatura))
+        INSERT INTO temperaturas (mac, timestamp, temperatura, humedad)
+        VALUES (?, ?, ?, ?)
+        ''', (mac, timestamp, temperatura, humedad))
         conn.commit()
         print(
-            f"Datos insertados: MAC={mac}, Temperatura={temperatura}, Timestamp={timestamp}")
+            f"Datos insertados: MAC={mac}, Temperatura={temperatura}, Humedad={humedad}, Timestamp={timestamp}")
     except sqlite3.IntegrityError as ie:
         print(f"Error de integridad en la base de datos: {ie}")
     except sqlite3.OperationalError as oe:
