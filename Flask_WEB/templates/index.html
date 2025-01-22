@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="300">
+    <title>Temperaturas</title>
+</head>
+<body>
+    <h1>Datos de Temperaturas</h1>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Temperatura</th>
+                <th>MAC</th>
+                <th>Ubicación</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fila in datos %}
+            <tr>
+                <td>{{ fila[0] }}</td>
+                <td>{{ fila[1] }}</td>
+                <td>{{ fila[2] }}</td>
+                <td>{{ fila[3] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Controles de paginación -->
+    <div>
+        <p>Página {{ pagina }} de {{ total_paginas }}</p>
+        <a href="/?pagina=1">Primera</a>
+        <a href="/?pagina={{ pagina - 1 if pagina > 1 else 1 }}">Anterior</a>
+        <a href="/?pagina={{ pagina + 1 if pagina < total_paginas else total_paginas }}">Siguiente</a>
+        <a href="/?pagina={{ total_paginas }}">Última</a>
+    </div>
+</body>
+</html>
