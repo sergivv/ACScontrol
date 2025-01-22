@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 # Crear/conectar a la base de datos
 conn = sqlite3.connect(
-    './../Server_MQTT/src/ACS_control.db', check_same_thread=False)
+    './../Server_MQTT/ACS_control.db', check_same_thread=False)
 cursor = conn.cursor()
 
 # Función para obtener los datos con paginación
