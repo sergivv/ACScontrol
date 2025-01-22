@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 # Crear/conectar a la base de datos
 conn = sqlite3.connect(
-    './../Python_MQTT/src/ACS_control.db', check_same_thread=False)
+    './../Server_MQTT/src/ACS_control.db', check_same_thread=False)
 cursor = conn.cursor()
 
 # Función para obtener los datos con paginación
@@ -14,7 +14,7 @@ cursor = conn.cursor()
 def obtener_datos(pagina=1, por_pagina=25):
     offset = (pagina - 1) * por_pagina  # Calculamos el desplazamiento (OFFSET)
     cursor.execute('''
-        SELECT t.timestamp, t.temperatura, t.mac, d.ubicacion
+        SELECT t.timestamp, t.temperatura, t.humedad, t.mac, d.ubicacion
         FROM temperaturas t
         LEFT JOIN dispositivos d ON t.mac = d.mac
         ORDER BY t.timestamp DESC
