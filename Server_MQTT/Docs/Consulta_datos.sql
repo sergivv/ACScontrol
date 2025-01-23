@@ -1,5 +1,5 @@
 SELECT 
-    d.ubicacion AS Ubicación,
+    d.dispositivo AS Dispositivo,
 	t.temperatura AS Temperatura,
 	t.humedad AS Humedad,
 	t.timestamp AS FechaHora

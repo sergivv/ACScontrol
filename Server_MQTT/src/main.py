@@ -12,7 +12,7 @@ cursor = conn.cursor()
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS dispositivos (
     mac BLOB PRIMARY KEY,  -- La dirección MAC será la clave primaria
-    ubicacion TEXT NOT NULL,
+    dispositivo TEXT NOT NULL,
     descripcion TEXT
     )
 ''')
