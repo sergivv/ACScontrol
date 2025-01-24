@@ -7,5 +7,7 @@ FROM
     dispositivos d
 JOIN 
     temperaturas t ON d.mac = t.mac
+WHERE
+	d.dispositivo = "Control"
 ORDER BY
 	FechaHora DESC;
