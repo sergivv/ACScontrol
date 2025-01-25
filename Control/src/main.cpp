@@ -174,6 +174,34 @@ void checkWiFiConnection()
   }
 }
 
+// Muestra temperatura y humedad en pantalla
+void updateDisplay(float temperatura, float humedad, int caldera, int bomba)
+{
+  display.fillRect(0, 0, SCREEN_WIDTH, 32, SSD1306_BLACK);
+  display.setTextSize(2);
+  display.setCursor(0, 0);
+  display.setTextColor(SSD1306_WHITE);
+  display.print("T: ");
+  display.print(temperatura);
+  display.println(" C");
+  display.print("H: ");
+  display.print(humedad);
+  display.println(" %");
+  display.setCursor(15, 45);
+  display.print("C:");
+
+  display.drawCircle(45, 51, 7, SSD1306_WHITE);
+  display.drawCircle(95, 51, 7, SSD1306_WHITE);
+
+  caldera == 0 ? display.drawCircle(45, 51, 4, SSD1306_WHITE) : display.fillCircle(45, 51, 4, SSD1306_WHITE);
+
+  display.setCursor(65, 45);
+  display.print("B:");
+  bomba == 0 ? display.drawCircle(95, 51, 4, SSD1306_WHITE) : display.fillCircle(95, 51, 4, SSD1306_WHITE);
+
+  display.display();
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -209,14 +237,7 @@ void loop()
 
     if (!isnan(temperatura) && !isnan(humedad))
     {
-      display.clearDisplay();
-      display.setCursor(0, 0);
-      display.print("Temperatura: ");
-      display.print(temperatura);
-      display.setCursor(0, 15);
-      display.print("Humedad: ");
-      display.print(humedad);
-      display.display();
+      updateDisplay(temperatura, humedad, 0, 1);
 
       publishTemperature();
     }
