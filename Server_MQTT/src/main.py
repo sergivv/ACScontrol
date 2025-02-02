@@ -29,16 +29,27 @@ CREATE TABLE IF NOT EXISTS temperaturas (
 )
 ''')
 
+# Crear la tabla configuraciones
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS configuraciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mac BLOB NOT NULL,
+    maxima REAL NOT NULL,
+    minima REAL NOT NULL,
+    timestamp INTEGER NOT NULL,
+    FOREIGN KEY(mac) REFERENCES dispositivos(mac) ON DELETE CASCADE
+);
+''')
+
 # Crear un índice en el campo "mac"
 cursor.execute('''
 CREATE INDEX IF NOT EXISTS idx_mac ON temperaturas(mac);
 ''')
 
-print("Tabla creada exitosamente.")
+print("Tablas creadas exitosamente.")
+
 
 # Función para obtener la hora local en formato ISO 8601
-
-
 def hora_local():
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
