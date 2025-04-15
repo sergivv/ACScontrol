@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Adafruit_SHT31.h>
+#include <DHT.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include "config.h"
@@ -13,8 +13,10 @@
 #define OLED_ADDRESS 0x3C
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
 
-// Inicialización SHT3x
-Adafruit_SHT31 sht31 = Adafruit_SHT31();
+// Configuración del sensor DHT22
+#define DHTPIN 4          // Pin digital 4
+#define DHTTYPE DHT22     // Define el tipo de sensor DHT
+DHT dht(DHTPIN, DHTTYPE); // Crea el objeto DHT
 
 // Variables
 float temperatura = 0.0;
@@ -25,13 +27,13 @@ unsigned long lastWiFiCheck = 0;
 const unsigned long wifiCheckInterval = 300000; // Verificar wifi cada 5 min
 
 unsigned long lastMeasurementTime = 0;
-const unsigned long measurementInterval = 60000;
+const unsigned long measurementInterval = 60000; // 1 minuto
 
 // Conexión del cliente MQTT
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// Configuración OLED
+// Configuración OLED (sin cambios)
 void setupOLED()
 {
   // Inicializa la pantalla OLED
@@ -46,16 +48,13 @@ void setupOLED()
   display.setTextColor(SSD1306_WHITE);
 }
 
-void setupSHT3x()
+// Función de configuración para el DHT22
+void setupDHT()
 {
-  // Iniciar comunicación I2C
-  if (!sht31.begin(0x44))
-  { // 0x44 es la dirección I2C predeterminada del SHT30
-    Serial.println("¡No se encontró el sensor SHT30!");
-    while (1)
-      ; // Detener el programa
-  }
-  Serial.println("Sensor SHT30 inicializado.");
+  dht.begin(); // Inicia el sensor DHT
+  Serial.println("Sensor DHT22 inicializado.");
+  // Pequeña espera inicial para estabilizar el sensor DHT
+  delay(2000);
 }
 
 // Conexión wifi
@@ -126,7 +125,7 @@ void publishTemperature()
   float humRedondeada = round(humedad * 10) / 10.0;
 
   // Comparar con la última temperatura publicada
-  if (tempRedondeada == lastPublishedTemperature)
+  if (tempRedondeada == lastPublishedTemperature && lastPublishedTemperature != -1000.0) // Evitar no publicar la primera vez
   {
     Serial.println("Temperatura sin cambios. No se publica.");
     return; // Salir si la temperatura no cambió
@@ -139,18 +138,21 @@ void publishTemperature()
   JsonDocument doc;
   doc["mac"] = WiFi.macAddress();      // Dirección MAC
   doc["temperatura"] = tempRedondeada; // Temperatura con 1 decimal
-  doc["humedad"] = humRedondeada;
+  doc["humedad"] = humRedondeada;      // Humedad con 1 decimal
 
   // Serializar JSON a una cadena
   char jsonBuffer[200];
   serializeJson(doc, jsonBuffer);
 
+  Serial.print("Preparando para publicar JSON: ");
   Serial.println(jsonBuffer);
 
   // Publicar el JSON
   if (client.publish(mqtt_topic.c_str(), jsonBuffer))
   {
-    Serial.print("JSON publicado: ");
+    Serial.print("JSON publicado en ");
+    Serial.print(mqtt_topic);
+    Serial.print(": ");
     Serial.println(jsonBuffer);
   }
   else
@@ -159,7 +161,7 @@ void publishTemperature()
   }
 }
 
-// Comprueba el estado de la conexión WiFi
+// Comprueba el estado de la conexión WiFi y reconecta si es necesario
 void checkWiFiConnection()
 {
   if (millis() - lastWiFiCheck >= wifiCheckInterval)
@@ -182,10 +184,10 @@ void updateDisplay(float temperatura, float humedad, int caldera, int bomba)
   display.setCursor(0, 0);
   display.setTextColor(SSD1306_WHITE);
   display.print("T: ");
-  display.print(temperatura);
+  display.print(temperatura, 1); // Mostrar 1 decimal
   display.println(" C");
   display.print("H: ");
-  display.print(humedad);
+  display.print(humedad, 1); // Mostrar 1 decimal
   display.println(" %");
   display.setCursor(15, 45);
   display.print("C:");
@@ -206,10 +208,10 @@ void setup()
 {
   Serial.begin(115200);
 
-  setupOLED();
-  connectWiFi();
-  setupSHT3x();
-  client.setServer(servidor_mqtt, puerto_mqtt);
+  setupOLED();                                  // Configura OLED
+  setupDHT();                                   // DHT Cambio: Llama a la nueva función de setup del DHT
+  connectWiFi();                                // Conecta al WiFi
+  client.setServer(servidor_mqtt, puerto_mqtt); // Configura MQTT
 }
 
 void loop()
@@ -222,23 +224,37 @@ void loop()
   {
     connectToMQTT();
   }
-  client.loop();
+  client.loop(); // Necesario para mantener la conexión MQTT y procesar mensajes entrantes
 
-  // Medir y publicar temperatura cada 1 minuto
+  // Medir y publicar temperatura cada 'measurementInterval'
   unsigned long currentTime = millis();
   if (currentTime - lastMeasurementTime >= measurementInterval)
   {
     lastMeasurementTime = currentTime;
 
-    temperatura = sht31.readTemperature();
-    humedad = sht31.readHumidity();
-    Serial.println(temperatura);
-    Serial.println(humedad);
+    // Leer temperatura y humedad del DHT22
+    humedad = dht.readHumidity();        // Lee la humedad primero
+    temperatura = dht.readTemperature(); // Lee la temperatura
 
-    if (!isnan(temperatura) && !isnan(humedad))
+    // Comprobar si las lecturas son válidas (no NaN - Not a Number)
+    if (isnan(temperatura) || isnan(humedad))
     {
-      updateDisplay(temperatura, humedad, 0, 1);
+      Serial.println("Error al leer del sensor DHT!");
+      lastPublishedTemperature = -1000.0;
+    }
+    else
+    {
+      Serial.print("Humedad: ");
+      Serial.print(humedad);
+      Serial.print(" %\t");
+      Serial.print("Temperatura: ");
+      Serial.print(temperatura);
+      Serial.println(" *C");
 
+      // Actualizar pantalla (pasando 1 decimal)
+      updateDisplay(round(temperatura * 10) / 10.0, round(humedad * 10) / 10.0, 0, 1); // Asumiendo caldera=0, bomba=1 como en tu código original
+
+      // Publicar por MQTT si la temperatura ha cambiado
       publishTemperature();
     }
   }
