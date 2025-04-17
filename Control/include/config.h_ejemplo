@@ -13,6 +13,5 @@ IPAddress subnet(000, 000, 000, 000);   // Máscara de subred (generalmente 255.
 // Configuración del servidor MQTT
 const char *servidor_mqtt = "xxx.xxx.xxx.xxx"; // Dirección del servidor MQTT
 const int puerto_mqtt = 1983;                  // Puerto del servidor
-String mqtt_topic;
 
 #endif
