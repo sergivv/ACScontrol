@@ -37,7 +37,7 @@ void setupOLED()
 {
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS))
   {
-    Serial.println("[ERROR] OLED no detectado. Verifica conexiones.");
+    LOG_ERROR("OLED no detectado. Verifica conexiones.");
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
     display.println("Error OLED");
@@ -72,7 +72,7 @@ void connectWiFi()
 
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("[ERROR] WiFi no conectado. Modo offline.");
+    LOG_ERROR("WiFi no conectado. Modo offline.");
     display.clearDisplay();
     display.println("WiFi Falló");
     display.println("Modo offline");
@@ -80,7 +80,7 @@ void connectWiFi()
     return; // Continúa en modo offline sin reiniciar
   }
 
-  Serial.println("[INFO] WiFi conectado. IP: " + WiFi.localIP().toString());
+  LOG_INFO("WiFi conectado. IP: " + WiFi.localIP().toString());
 }
 
 void checkWiFiConnection()
@@ -90,7 +90,7 @@ void checkWiFiConnection()
     lastWiFiCheck = millis();
     if (WiFi.status() != WL_CONNECTED)
     {
-      Serial.println("WiFi desconectado. Intentando reconectar...");
+      LOG_ERROR("WiFi desconectado. Intentando reconectar...");
       WiFi.disconnect();
       WiFi.reconnect();
     }
@@ -102,12 +102,12 @@ void connectToMQTT()
   if (client.connected())
     return;
 
-  Serial.println("[INFO] Intentando conexión MQTT...");
+  LOG_INFO("Intentando conexión MQTT...");
   String clientId = "ESP32-" + WiFi.macAddress();
 
   if (client.connect(clientId.c_str()))
   {
-    Serial.println("[INFO] MQTT conectado.");
+    LOG_INFO("MQTT conectado.");
     display.println("MQTT OK");
     display.display();
   }
@@ -142,7 +142,7 @@ void publishTemperature()
 {
   if (temperatura <= -50.0 || temperatura >= 125.0)
   { // Rango válido DS18B20
-    Serial.println("[ERROR] Temperatura fuera de rango: " + String(temperatura));
+    LOG_ERROR("Temperatura fuera de rango: " + String(temperatura));
     display.println("Error Sensor");
     display.display();
     return;
@@ -151,7 +151,7 @@ void publishTemperature()
   float tempRedondeada = round(temperatura * 10) / 10.0;
   if (tempRedondeada == lastPublishedTemperature)
   {
-    Serial.println("[INFO] Temperatura sin cambios. No se publica.");
+    LOG_INFO("Temperatura sin cambios. No se publica.");
     return;
   }
 
@@ -175,7 +175,7 @@ void publishTemperature()
   }
   else
   {
-    Serial.println("Error al publicar JSON");
+    LOG_ERROR("Error al publicar JSON");
   }
 }
 
@@ -190,13 +190,13 @@ void setup()
   sensors.begin();
   if (sensors.getDeviceCount() == 0)
   {
-    Serial.println("[ERROR] Sensor DS18B20 no encontrado.");
+    LOG_ERROR("Sensor DS18B20 no encontrado.");
     display.println("Error: Sin sensor");
     display.display();
     while (true)
       ; // Bloquea la ejecución
   }
-  Serial.println("[INFO] Sensor DS18B20 inicializado.");
+  LOG_INFO("Sensor DS18B20 inicializado.");
 
   connectWiFi();
 }
