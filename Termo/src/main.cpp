@@ -81,6 +81,17 @@ void connectWiFi()
   }
 
   LOG_INFO("WiFi conectado. IP: " + WiFi.localIP().toString());
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    // Genera el topic usando la MAC y el base
+    String macAddress = WiFi.macAddress();
+    macAddress.replace(":", ""); // Elimina ':' para simplificar
+    mqtt_topic = String(MQTT_TOPIC_BASE) + "/" + macAddress + "/Temperatura";
+
+    LOG_INFO("Topic MQTT generado: ");
+    LOG_INFO(mqtt_topic);
+  }
 }
 
 void checkWiFiConnection()
