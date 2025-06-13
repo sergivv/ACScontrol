@@ -103,37 +103,55 @@ void connectToMQTT()
     return;
 
   LOG_INFO("Intentando conexión MQTT...");
-  String clientId = "ESP32-" + WiFi.macAddress();
 
+  String clientId = "ESP32-" + WiFi.macAddress(); // ID único basado en MAC
   if (client.connect(clientId.c_str()))
   {
-    LOG_INFO("MQTT conectado.");
-    display.println("MQTT OK");
-    display.display();
+    LOG_INFO("¡Conectado al broker MQTT!");
+    LOG_INFO("ClientID: ");
+    LOG_INFO(clientId);
   }
   else
   {
-    String error;
+    LOG_ERROR("Fallo en conexión MQTT. Código de error:");
+    LOG_ERROR(client.state()); // Imprime el código de error
+
+    // Descripción del error
     switch (client.state())
     {
-    case MQTT_CONNECTION_TIMEOUT:
-      error = "Timeout";
+    case -4:
+      LOG_ERROR("MQTT_CONNECTION_TIMEOUT");
       break;
-    case MQTT_CONNECTION_LOST:
-      error = "Conexión perdida";
+    case -3:
+      LOG_ERROR("MQTT_CONNECTION_LOST");
       break;
-    case MQTT_CONNECT_FAILED:
-      error = "Falló";
+    case -2:
+      LOG_ERROR("MQTT_CONNECT_FAILED");
+      break;
+    case -1:
+      LOG_ERROR("MQTT_DISCONNECTED");
+      break;
+    case 0:
+      LOG_ERROR("MQTT_CONNECTED");
+      break;
+    case 1:
+      LOG_ERROR("MQTT_CONNECT_BAD_PROTOCOL");
+      break;
+    case 2:
+      LOG_ERROR("MQTT_CONNECT_BAD_CLIENT_ID");
+      break;
+    case 3:
+      LOG_ERROR("MQTT_CONNECT_UNAVAILABLE");
+      break;
+    case 4:
+      LOG_ERROR("MQTT_CONNECT_BAD_CREDENTIALS");
+      break;
+    case 5:
+      LOG_ERROR("MQTT_CONNECT_UNAUTHORIZED");
       break;
     default:
-      error = "Código: " + String(client.state());
+      LOG_ERROR("Error desconocido");
     }
-    Serial.printf("[ERROR] MQTT: %s\n", error.c_str());
-
-    display.clearDisplay();
-    display.println("MQTT Error:");
-    display.println(error);
-    display.display();
   }
 }
 
@@ -199,6 +217,8 @@ void setup()
   LOG_INFO("Sensor DS18B20 inicializado.");
 
   connectWiFi();
+  client.setServer(servidor_mqtt, puerto_mqtt);
+  delay(500);
 }
 
 void loop()
