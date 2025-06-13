@@ -37,15 +37,17 @@ void setupOLED()
 {
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS))
   {
-    LOG_ERROR("OLED no detectado. Verifica conexiones.");
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-    display.println("Error OLED");
-    display.display();
+    LOG_ERROR("¡Error al iniciar OLED! Verifica:");
+    LOG_WARN("1. Conexiones SDA/SCL");
+    LOG_WARN("2. Dirección I2C (0x3C vs 0x3D)");
     while (true)
-      ; // Bloquea la ejecución
+      ; // Bloquea el programa si falla
   }
   display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.display(); // ¡Importante! Esta línea aplica los cambios.
+  LOG_INFO("OLED inicializado correctamente.");
 }
 
 void connectWiFi()
@@ -66,6 +68,7 @@ void connectWiFi()
     Serial.printf("[WARN] Intento WiFi %d/%d\n", intentos, maxIntentos);
 
     display.clearDisplay();
+    display.setCursor(0, 0);
     display.printf("WiFi %d/%d\n", intentos, maxIntentos);
     display.display();
   }
@@ -74,13 +77,18 @@ void connectWiFi()
   {
     LOG_ERROR("WiFi no conectado. Modo offline.");
     display.clearDisplay();
+    display.setCursor(0, 0);
     display.println("WiFi Falló");
-    display.println("Modo offline");
+    display.print("Modo offline");
     display.display();
     return; // Continúa en modo offline sin reiniciar
   }
 
   LOG_INFO("WiFi conectado. IP: " + WiFi.localIP().toString());
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("IP: " + WiFi.localIP().toString());
+  display.display();
 
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -208,6 +216,22 @@ void publishTemperature()
   }
 }
 
+void reinicioControlado(const String &motivo, unsigned int tiempoEspera = 3000)
+{
+  LOG_ERROR("Reiniciando ESP32. Motivo: " + motivo);
+
+  // Mostrar motivo en OLED (si está disponible)
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("Reiniciando:");
+  display.println(motivo);
+  display.display();
+
+  delay(tiempoEspera); // Tiempo para que el usuario lea el mensaje
+  ESP.restart();       // Reinicio físico
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -222,8 +246,8 @@ void setup()
     LOG_ERROR("Sensor DS18B20 no encontrado.");
     display.println("Error: Sin sensor");
     display.display();
-    while (true)
-      ; // Bloquea la ejecución
+    LOG_ERROR("Error al leer el sensor DS18B20. Reinicio controlado.");
+    reinicioControlado("Error en sensor DS18B20");
   }
   LOG_INFO("Sensor DS18B20 inicializado.");
 
@@ -252,6 +276,11 @@ void loop()
 
     sensors.requestTemperatures();
     temperatura = sensors.getTempCByIndex(0); // Obtiene la temperatura en grados Celsius
+    if (temperatura == -127.0)
+    {
+      LOG_ERROR("Error al leer el sensor DS18B20. Reinicio controlado.");
+      reinicioControlado("Error en sensor DS18B20");
+    }
     Serial.print("Temperatura: ");
     Serial.print(temperatura, 1); // Temperatura con un decimal
     Serial.println(" ºC");
