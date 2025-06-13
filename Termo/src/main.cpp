@@ -35,53 +35,52 @@ const unsigned long measurementInterval = 60000;
 
 void setupOLED()
 {
-  // Inicializa la pantalla OLED
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS))
   {
-    Serial.println("Error al inicializar OLED");
+    Serial.println("[ERROR] OLED no detectado. Verifica conexiones.");
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.println("Error OLED");
+    display.display();
     while (true)
-      ;
+      ; // Bloquea la ejecución
   }
   display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
 }
 
 void connectWiFi()
 {
-  if (!WiFi.config(local_IP, gateway, subnet))
-  {
-    Serial.println("Fallo en la configuración de IP estática. Usando DHCP...");
-  }
+  int intentos = 0;
+  const int maxIntentos = 5;
+
+  display.clearDisplay();
+  display.println("Conectando WiFi...");
+  display.display();
 
   WiFi.begin(ssid, password);
-  unsigned long startAttemptTime = millis();
 
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) // 30s timeout
+  while (WiFi.status() != WL_CONNECTED && intentos < maxIntentos)
   {
-    delay(500);
-    Serial.print(".");
-  }
+    delay(2000);
+    intentos++;
+    Serial.printf("[WARN] Intento WiFi %d/%d\n", intentos, maxIntentos);
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
     display.clearDisplay();
-    display.println("WiFi conectado!");
-    display.print("IP: ");
-    display.println(WiFi.localIP());
+    display.printf("WiFi %d/%d\n", intentos, maxIntentos);
     display.display();
+  }
 
-    // Generamos el topic a partir de la mac
-    String macAddress = WiFi.macAddress();                     // Obtiene la MAC
-    mqtt_topic = "ACS_Control/" + macAddress + "/Temperatura"; // Crea el topic
-    Serial.print("Topic MQTT: ");
-    Serial.println(mqtt_topic);
-  }
-  else
+  if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("No se pudo conectar a Wi-Fi. Reiniciando...");
-    ESP.restart();
+    Serial.println("[ERROR] WiFi no conectado. Modo offline.");
+    display.clearDisplay();
+    display.println("WiFi Falló");
+    display.println("Modo offline");
+    display.display();
+    return; // Continúa en modo offline sin reiniciar
   }
+
+  Serial.println("[INFO] WiFi conectado. IP: " + WiFi.localIP().toString());
 }
 
 void checkWiFiConnection()
@@ -100,35 +99,60 @@ void checkWiFiConnection()
 
 void connectToMQTT()
 {
-  String clienteGenerado = "ESP-" + WiFi.macAddress().substring(12);
-  char cliente[10];
-  clienteGenerado.toCharArray(cliente, 10);
-  static unsigned long lastAttemptTime = 0;
-  if (millis() - lastAttemptTime > 5000)
-  { // Reintentar cada 5 segundos
-    lastAttemptTime = millis();
-    if (client.connect(cliente))
+  if (client.connected())
+    return;
+
+  Serial.println("[INFO] Intentando conexión MQTT...");
+  String clientId = "ESP32-" + WiFi.macAddress();
+
+  if (client.connect(clientId.c_str()))
+  {
+    Serial.println("[INFO] MQTT conectado.");
+    display.println("MQTT OK");
+    display.display();
+  }
+  else
+  {
+    String error;
+    switch (client.state())
     {
-      Serial.println("Conectado al broker MQTT!");
+    case MQTT_CONNECTION_TIMEOUT:
+      error = "Timeout";
+      break;
+    case MQTT_CONNECTION_LOST:
+      error = "Conexión perdida";
+      break;
+    case MQTT_CONNECT_FAILED:
+      error = "Falló";
+      break;
+    default:
+      error = "Código: " + String(client.state());
     }
-    else
-    {
-      Serial.print("Error MQTT: ");
-      Serial.println(client.state());
-    }
+    Serial.printf("[ERROR] MQTT: %s\n", error.c_str());
+
+    display.clearDisplay();
+    display.println("MQTT Error:");
+    display.println(error);
+    display.display();
   }
 }
 
 // Publicar JSON con temperatura y MAC
 void publishTemperature()
 {
-  // Redondear temperatura a 1 decimal
-  float tempRedondeada = round(temperatura * 10) / 10.0;
+  if (temperatura <= -50.0 || temperatura >= 125.0)
+  { // Rango válido DS18B20
+    Serial.println("[ERROR] Temperatura fuera de rango: " + String(temperatura));
+    display.println("Error Sensor");
+    display.display();
+    return;
+  }
 
-  // Comparar con la última temperatura publicada
-  if (tempRedondeada == lastPublishedTemperature) {
-    Serial.println("Temperatura sin cambios. No se publica.");
-    return; // Salir si la temperatura no cambió
+  float tempRedondeada = round(temperatura * 10) / 10.0;
+  if (tempRedondeada == lastPublishedTemperature)
+  {
+    Serial.println("[INFO] Temperatura sin cambios. No se publica.");
+    return;
   }
 
   // Actualizar la última temperatura publicada
@@ -158,11 +182,23 @@ void publishTemperature()
 void setup()
 {
   Serial.begin(115200);
+  delay(1000); // Tiempo para inicializar Serial
 
   setupOLED();
-  connectWiFi();
+
+  // Verificar sensor DS18B20
   sensors.begin();
-  client.setServer(servidor_mqtt, puerto_mqtt);
+  if (sensors.getDeviceCount() == 0)
+  {
+    Serial.println("[ERROR] Sensor DS18B20 no encontrado.");
+    display.println("Error: Sin sensor");
+    display.display();
+    while (true)
+      ; // Bloquea la ejecución
+  }
+  Serial.println("[INFO] Sensor DS18B20 inicializado.");
+
+  connectWiFi();
 }
 
 void loop()
