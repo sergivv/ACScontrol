@@ -10,128 +10,141 @@ cursor = conn.cursor()
 
 # Crear la tabla dispositivos
 cursor.execute('''
-CREATE TABLE IF NOT EXISTS dispositivos (
-    mac BLOB PRIMARY KEY,  -- La dirección MAC será la clave primaria
-    dispositivo TEXT NOT NULL,
-    descripcion TEXT
-    )
+CREATE TABLE IF NOT EXISTS "dispositivos" (
+    "mac" TEXT PRIMARY KEY NOT NULL,
+    "dispositivo" TEXT NOT NULL,
+    "descripcion" TEXT,
+    "fecha_registro" TEXT DEFAULT CURRENT_TIMESTAMP,
+    "ubicacion" TEXT,
+    "activo" INTEGER DEFAULT 1  -- 1=activo, 0=inactivo
+);
 ''')
 
 # Crear la tabla temperaturas
 cursor.execute('''
-CREATE TABLE IF NOT EXISTS temperaturas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,  
-    mac BLOB NOT NULL,                     -- Relacionado con dispositivos.mac
-    timestamp TEXT NOT NULL,
-    temperatura REAL NOT NULL,
-    humedad REAL DEFAULT NULL,
-    FOREIGN KEY(mac) REFERENCES dispositivos(mac) ON DELETE CASCADE
-)
-''')
-
-# Crear la tabla configuraciones
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS configuraciones (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mac BLOB NOT NULL,
-    maxima REAL NOT NULL,
-    minima REAL NOT NULL,
-    timestamp INTEGER NOT NULL,
-    FOREIGN KEY(mac) REFERENCES dispositivos(mac) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS "temperaturas" (
+    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "mac" TEXT NOT NULL,
+    "timestamp" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "temperatura" REAL NOT NULL,
+    "humedad" REAL,
+    "bateria" REAL,
+    FOREIGN KEY ("mac") REFERENCES "dispositivos" ("mac") ON DELETE CASCADE
 );
 ''')
 
-# Crear un índice en el campo "mac"
+# Índice para consultas rápidas por dispositivo y fecha
 cursor.execute('''
-CREATE INDEX IF NOT EXISTS idx_mac ON temperaturas(mac);
+CREATE INDEX IF NOT EXISTS "idx_temperaturas_mac_timestamp" 
+ON "temperaturas" ("mac", "timestamp");
+''')
+
+# Trigger para borrado lógico (evita perder datos históricos)
+cursor.execute('''
+CREATE TRIGGER IF NOT EXISTS "logical_delete_dispositivo"
+BEFORE DELETE ON "dispositivos"
+BEGIN
+    UPDATE "dispositivos" SET activo = 0 WHERE mac = OLD.mac;
+    SELECT RAISE(IGNORE);  -- Cancela el borrado físico
+END;
 ''')
 
 print("Tablas creadas exitosamente.")
 
 
 # Función para obtener la hora local en formato ISO 8601
-def hora_local():
+def hora_iso():
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
-def es_mac_valida(mac):
+def validar_mac(mac):
+    """Valida formato MAC (AA:BB:CC:DD:EE:FF)"""
     return bool(re.match(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$', mac))
 
 # Función para insertar datos desde un JSON
 
 
-def insertar_datos(data_json):
+def insertar_medicion(data):
     try:
-        datos = json.loads(data_json)
-        mac = datos.get("mac")
-        temperatura = datos.get("temperatura")
-        humedad = datos.get("humedad", None)
-        if not mac or temperatura is None:
-            raise ValueError(
-                "El JSON no contiene los campos 'mac' o 'temperatura'")
+        # Validación básica
+        if not all(k in data for k in ['mac', 'temperatura']):
+            raise ValueError("Faltan campos obligatorios")
 
-        if not es_mac_valida(mac):
-            raise ValueError(f"La dirección MAC '{mac}' no es válida")
+        if not validar_mac(data['mac']):
+            raise ValueError(f"MAC inválida: {data['mac']}")
 
-        timestamp = hora_local()  # Obtener la hora local
-
-        # Insertar en la base de datos
+        # Insertar medición
         cursor.execute('''
-        INSERT INTO temperaturas (mac, timestamp, temperatura, humedad)
+        INSERT INTO temperaturas 
+        (mac, temperatura, humedad, bateria) 
         VALUES (?, ?, ?, ?)
-        ''', (mac, timestamp, temperatura, humedad))
+        ''', (
+            data['mac'],
+            data['temperatura'],
+            data.get('humedad'),
+            data.get('bateria')  # Opcional para futuro
+        ))
         conn.commit()
-        print(
-            f"Datos insertados: MAC={mac}, Temperatura={temperatura}, Humedad={humedad}, Timestamp={timestamp}")
-    except sqlite3.IntegrityError as ie:
-        print(f"Error de integridad en la base de datos: {ie}")
-    except sqlite3.OperationalError as oe:
-        print(f"Error operativo en la base de datos: {oe}")
+
+        print(f"[OK] {data['mac']} | Temp: {data['temperatura']}°C | "
+              f"Hum: {data.get('humedad', 'N/A')}% | "
+              f"Bat: {data.get('bateria', 'N/A')}V")
+
     except ValueError as ve:
-        print(f"Error en los datos recibidos: {ve}")
+        print(f"[Validation Error] {ve}")
+    except sqlite3.IntegrityError:
+        print(f"[SQL Error] Violación de integridad")
     except Exception as e:
-        print(f"Error procesando el JSON: {e}")
+        print(f"[Unexpected Error] {type(e).__name__}: {e}")
 
-# The callback for when the client receives a CONNACK response from the server.
+# Callbacks MQTT
 
 
-def on_connect(client, userdata, flags, reason_code, properties):
-    print(f"Connected with result code {reason_code}")
-    # Subscribing in on_connect() means that if we lose the connection and
-    # reconnect then subscriptions will be renewed.
+def on_connect(client, _, flags, rc, properties):
+    print(f"Conectado al broker (código {rc})")
     client.subscribe("ACS_Control/+/Temperatura")
 
-# The callback for when a PUBLISH message is received from the server.
 
-
-def on_message(client, userdata, msg):
+def on_message(_, __, msg):
     try:
-        json_recibido = msg.payload.decode()
-        # Extraer el identificador del dispositivo del tópico
-        dispositivo = msg.topic.split('/')[1]
-        print(
-            f"[{hora_local()}] Mensaje recibido del dispositivo '{dispositivo}': {json_recibido}")
-        insertar_datos(json_recibido)
+        topic_parts = msg.topic.split('/')
+        dispositivo_id = topic_parts[1]
+
+        data = json.loads(msg.payload.decode())
+        # Usar ID del tópico si no hay nombre
+        data.setdefault('dispositivo', dispositivo_id)
+
+        insertar_medicion(data)
+
+    except json.JSONDecodeError:
+        print(f"[ERROR] JSON inválido: {msg.payload}")
     except Exception as e:
-        print(f"Error procesando el mensaje MQTT: {e}")
+        print(f"[ERROR] Procesando mensaje: {e}")
 
 
-mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-mqttc.on_connect = on_connect
-mqttc.on_message = on_message
+# Configuración MQTT
+mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
 
-mqttc.connect("192.168.3.1", 7983, 60)
+try:
+    mqtt_client.connect("192.168.3.1", 7983, 60)
+except Exception as e:
+    print(f"[FATAL] Error conexión MQTT: {e}")
+    exit(1)
 
 
 def main():
     try:
-        mqttc.loop_forever()
+        print("Iniciando servicio... (Ctrl+C para detener)")
+        mqtt_client.loop_forever()
+
     except KeyboardInterrupt:
-        print("Interrupción por teclado detectada. Cerrando cliente MQTT...")
+        print("\nDeteniendo servicio...")
     finally:
-        mqttc.disconnect()  # Desconecta el cliente MQTT
-        conn.close()        # Cierra la conexión SQLite
-        print("Cliente MQTT y base de datos cerrados correctamente.")
+        mqtt_client.disconnect()
+        conn.close()
+        print("Recursos liberados correctamente")
 
 
 if __name__ == "__main__":
