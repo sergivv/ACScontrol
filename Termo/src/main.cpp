@@ -33,31 +33,50 @@ const unsigned long wifiCheckInterval = 300000; // Verificar wifi cada 5 min
 unsigned long lastMeasurementTime = 0;
 const unsigned long measurementInterval = 60000;
 
-void setupOLED()
+bool setupOLED()
 {
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS))
   {
     LOG_ERROR("¡Error al iniciar OLED! Verifica:");
     LOG_WARN("1. Conexiones SDA/SCL");
     LOG_WARN("2. Dirección I2C (0x3C vs 0x3D)");
-    while (true)
-      ; // Bloquea el programa si falla
+    return false;
   }
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.display(); // ¡Importante! Esta línea aplica los cambios.
   LOG_INFO("OLED inicializado correctamente.");
+  return true;
 }
 
-void connectWiFi()
+void mostrarMensaje(const String &mensaje)
+{
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println(mensaje);
+  display.display();
+  delay(3000);
+}
+
+bool setupDS18B20()
+{
+  sensors.begin();
+  if (sensors.getDeviceCount() == 0)
+  {
+    Serial.println("Sensor no detectado");
+    return false;
+  }
+  return true;
+}
+
+bool connectWiFi()
 {
   int intentos = 0;
   const int maxIntentos = 5;
 
-  display.clearDisplay();
-  display.println("Conectando WiFi...");
-  display.display();
+  mostrarMensaje("Conectando a WiFi...");
+  LOG_INFO("Conectando a WiFi: " + String(ssid));
 
   WiFi.begin(ssid, password);
 
@@ -81,7 +100,7 @@ void connectWiFi()
     display.println("WiFi Falló");
     display.print("Modo offline");
     display.display();
-    return; // Continúa en modo offline sin reiniciar
+    return false; // Continúa en modo offline sin reiniciar
   }
 
   LOG_INFO("WiFi conectado. IP: " + WiFi.localIP().toString());
@@ -100,6 +119,7 @@ void connectWiFi()
     LOG_INFO("Topic MQTT generado: ");
     LOG_INFO(mqtt_topic);
   }
+  return true;
 }
 
 void checkWiFiConnection()
@@ -180,8 +200,8 @@ void publishTemperature()
   if (temperatura <= -50.0 || temperatura >= 125.0)
   { // Rango válido DS18B20
     LOG_ERROR("Temperatura fuera de rango: " + String(temperatura));
-    display.println("Error Sensor");
-    display.display();
+    mostrarMensaje("Error: Temp fuera de rango");
+    delay(1000);
     return;
   }
 
@@ -237,21 +257,24 @@ void setup()
   Serial.begin(115200);
   delay(1000); // Tiempo para inicializar Serial
 
-  setupOLED();
-
-  // Verificar sensor DS18B20
-  sensors.begin();
-  if (sensors.getDeviceCount() == 0)
+  if (!setupOLED())
   {
-    LOG_ERROR("Sensor DS18B20 no encontrado.");
-    display.println("Error: Sin sensor");
-    display.display();
-    LOG_ERROR("Error al leer el sensor DS18B20. Reinicio controlado.");
-    reinicioControlado("Error en sensor DS18B20");
+    reinicioControlado("Falló OLED");
   }
-  LOG_INFO("Sensor DS18B20 inicializado.");
+  mostrarMensaje("Iniciando...");
 
-  connectWiFi();
+  if (!setupDS18B20())
+  { // Verifica conexión del sensor
+    reinicioControlado("Fallo sensor");
+  }
+  mostrarMensaje("Sensor DS18B20 OK");
+
+  if (!connectWiFi())
+  {
+    reinicioControlado("Falló WiFi");
+  }
+  mostrarMensaje("WiFi conectado");
+
   client.setServer(servidor_mqtt, puerto_mqtt);
   delay(500);
 }
