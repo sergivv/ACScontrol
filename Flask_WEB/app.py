@@ -16,7 +16,7 @@ def obtener_datos(pagina=1, por_pagina=20):
     '''Obtenemos los datos de la base de datos con paginación'''
     offset = (pagina - 1) * por_pagina  # Calculamos el desplazamiento (OFFSET)
     cursor.execute('''
-        SELECT t.timestamp, t.temperatura, t.humedad, t.mac, d.dispositivo
+        SELECT t.timestamp, t.temperatura, t.humedad, t.mac, d.dispositivo, t.bateria
         FROM temperaturas t
         LEFT JOIN dispositivos d ON t.mac = d.mac
         ORDER BY t.timestamp DESC
