@@ -2,7 +2,8 @@ SELECT
     d.dispositivo AS Dispositivo,
 	t.temperatura AS Temperatura,
 	t.humedad AS Humedad,
-	t.timestamp AS FechaHora
+	t.timestamp AS FechaHora,
+	t.bateria AS Bateria
 FROM 
     dispositivos d
 JOIN 
