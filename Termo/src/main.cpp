@@ -21,6 +21,7 @@ PubSubClient client(espClient);
 // Variables globales
 float temperatura = 0.0;
 float temp_min = 45.0, temp_max = 65.0;
+float lastPublishedTemp = NAN;
 String estacion = "invierno";
 unsigned long lastMeasurementTime = 0;
 const unsigned long measurementInterval = 60000;
@@ -56,7 +57,7 @@ bool connectWiFi()
   {
     if (WiFi.status() == WL_CONNECTED)
     {
-      mostrarMensaje("WiFi OK\nIP: " + WiFi.localIP().toString());
+      mostrarMensaje("WiFi OK\r\nIP: " + WiFi.localIP().toString());
 
       // Configurar topics MQTT
       String mac = WiFi.macAddress();
@@ -116,16 +117,35 @@ void reconnectMQTT()
 
 void publishTemperature()
 {
-  float tempRedondeada = round(temperatura * 10) / 10.0;
+  // Redondear a 1 decimal para evitar fluctuaciones mínimas
+  float temperaturaRedondeada = round(temperatura * 10) / 10.0;
 
-  JsonDocument doc;
-  doc["mac"] = WiFi.macAddress();
-  doc["temperatura"] = tempRedondeada;
+  // Verificar si la temperatura ha cambiado significativamente
+  if (isnan(lastPublishedTemp) || abs(temperaturaRedondeada - lastPublishedTemp) >= 0.2)
+  {
+    // Crear documento JSON
+    JsonDocument doc;
+    doc["mac"] = WiFi.macAddress();
+    doc["temperatura"] = temperaturaRedondeada;
 
-  char jsonBuffer[200];
-  serializeJson(doc, jsonBuffer);
+    // Serializar y publicar
+    char jsonBuffer[128];
+    serializeJson(doc, jsonBuffer);
 
-  client.publish(mqtt_topic.c_str(), jsonBuffer);
+    if (client.publish(mqtt_topic.c_str(), jsonBuffer))
+    {
+      Serial.printf("[MQTT] Temp publicada: %.1f°C (Anterior: %.1f°C)\r\n", temperaturaRedondeada, lastPublishedTemp);
+      lastPublishedTemp = temperaturaRedondeada; // Actualizar último valor publicado
+    }
+    else
+    {
+      Serial.println("[ERROR] Fallo al publicar temperatura");
+    }
+  }
+  else
+  {
+    Serial.printf("[DEBUG] Temp no cambió: %.1f°C\r\n", temperaturaRedondeada);
+  }
 }
 
 void setup()
