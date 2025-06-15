@@ -2,7 +2,9 @@ import paho.mqtt.client as mqtt
 import sqlite3
 import json
 import re
+import time
 from datetime import datetime
+from threading import Thread
 
 
 class ACSControlServer:
@@ -11,6 +13,8 @@ class ACSControlServer:
             'ACS_control.db', check_same_thread=False)
         self.setup_database()
         self.mqtt_client = self.setup_mqtt()
+        self.last_config_check = {}
+        self.running = True
 
     def setup_database(self):
         """Configura la estructura inicial de la base de datos"""
@@ -50,10 +54,22 @@ class ACSControlServer:
             FOREIGN KEY("mac_dispositivo") REFERENCES "dispositivos"("mac") ON DELETE CASCADE
         )''')
 
-        # Índice para mejor rendimiento
         cursor.execute('''
-        CREATE INDEX IF NOT EXISTS "idx_temperaturas_mac_timestamp" 
-        ON "temperaturas" ("mac", "timestamp")''')
+        CREATE TABLE IF NOT EXISTS estados (
+            mac_dispositivo TEXT PRIMARY KEY,
+            temp_min REAL DEFAULT NULL,
+            temp_max REAL DEFAULT NULL,
+            estacion TEXT DEFAULT NULL CHECK("estacion" IS NULL OR "estacion" IN ('verano', 'invierno')),
+            "estado_caldera" INTEGER DEFAULT NULL CHECK("estado_caldera" IN (0, 1)),
+            last_updated TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (mac_dispositivo) REFERENCES dispositivos (mac) ON DELETE CASCADE
+        )''')
+
+        # Índice para mejor rendimiento
+        cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_temperaturas_mac ON temperaturas (mac)')
+        cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_estados_updated ON estados (last_updated)')
 
         # Trigger para borrado lógico (evita perder datos históricos)
         cursor.execute('''
@@ -75,11 +91,57 @@ class ACSControlServer:
         client.connect("192.168.3.1", 7983, 60)
         return client
 
+    def start_config_monitor(self):
+        """Inicia el hilo que monitorea cambios en la configuración"""
+        def monitor_loop():
+            while self.running:
+                self.check_config_updates()
+                time.sleep(30)  # Revisar cada 30 segundos
+
+        Thread(target=monitor_loop, daemon=True).start()
+
+    def check_config_updates(self):
+        """Revisa y publica cambios en la configuración de dispositivos"""
+        cursor = self.db_conn.cursor()
+
+        # Obtener dispositivos activos
+        cursor.execute('SELECT mac FROM dispositivos WHERE activo = 1')
+        active_devices = [row[0] for row in cursor.fetchall()]
+
+        for mac in active_devices:
+            cursor.execute('''
+            SELECT temp_min, temp_max, estacion, last_updated 
+            FROM estados 
+            WHERE mac_dispositivo = ?''', (mac,))
+            result = cursor.fetchone()
+
+            if not result:
+                continue
+
+            temp_min, temp_max, estacion, last_updated = result
+
+            # Si es la primera vez o hubo cambios
+            if mac not in self.last_config_check or \
+               self.last_config_check[mac] != last_updated:
+
+                config = {
+                    'temp_min': temp_min,
+                    'temp_max': temp_max,
+                    'estacion': estacion
+                }
+
+                topic = f"ACS_Control/{mac}/ConfigUpdate"
+                self.mqtt_client.publish(topic, json.dumps(config))
+                print(f"Publicada actualización de configuración para {mac}")
+
+                self.last_config_check[mac] = last_updated
+
     def on_connect(self, client, _, flags, rc, properties):
         """Callback para conexión MQTT"""
         print("Conectado al broker MQTT")
         client.subscribe("ACS_Control/+/Temperatura")
         client.subscribe("ACS_Control/+/ConfigRequest")
+        self.start_config_monitor()
 
     def on_message(self, _, __, msg):
         """Procesa mensajes MQTT entrantes"""
@@ -142,6 +204,7 @@ class ACSControlServer:
             self.mqtt_client.loop_forever()
         except KeyboardInterrupt:
             print("\nDeteniendo servicio...")
+            self.running = False
         finally:
             self.mqtt_client.disconnect()
             self.db_conn.close()

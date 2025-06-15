@@ -64,6 +64,7 @@ bool connectWiFi()
       mqtt_topic = String(MQTT_TOPIC_BASE) + "/" + mac + "/Temperatura";
       topic_request = "ACS_Control/" + mac + "/ConfigRequest";
       topic_response = "ACS_Control/" + mac + "/ConfigResponse";
+      topic_update = "ACS_Control/" + mac + "/ConfigUpdate";
 
       return true;
     }
@@ -82,9 +83,13 @@ void callbackMQTT(char *topic, byte *payload, unsigned int length)
     message += (char)payload[i];
   }
 
-  if (topicStr == topic_response)
+  if (topicStr == topic_response or topicStr == topic_update)
   {
-    DynamicJsonDocument doc(256);
+    LOG_INFO("Mensaje recibido en topic: " + topicStr);
+    LOG_INFO("Mensaje: " + message);
+  }
+  {
+    JsonDocument doc;
     deserializeJson(doc, message);
 
     temp_min = doc["temp_min"] | temp_min;
@@ -104,6 +109,7 @@ void reconnectMQTT()
     if (client.connect(clientId.c_str()))
     {
       client.subscribe(topic_response.c_str());
+      client.subscribe(topic_update.c_str());
     }
   }
 }
